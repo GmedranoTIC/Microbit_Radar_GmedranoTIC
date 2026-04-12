@@ -213,6 +213,48 @@
       <div class="range-labels"><span>50cm</span><span id="range-val">100cm</span></div>
     </div>
 
+    <!-- CALIBRATION PANEL -->
+    <div class="panel">
+      <div class="panel-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+        <span>Calibración</span>
+      </div>
+
+      <!-- Offset angular -->
+      <div class="tele-label" style="margin-bottom:6px;">Offset angular</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+        <input type="range" id="cal-offset" min="-180" max="180" value="0" style="flex:1;accent-color:#22c55e;">
+        <span id="cal-offset-val" style="font-family:monospace;font-size:11px;color:#f4f4f5;min-width:36px;text-align:right;">0°</span>
+      </div>
+      <div style="font-size:9px;color:#52525b;margin-bottom:1rem;">Corrige el desfase entre el 0° del robot y el radar</div>
+
+      <!-- Escala de velocidad -->
+      <div class="tele-label" style="margin-bottom:6px;">Escala velocidad</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+        <input type="range" id="cal-scale" min="0.1" max="3.0" step="0.05" value="1.0" style="flex:1;accent-color:#22c55e;">
+        <span id="cal-scale-val" style="font-family:monospace;font-size:11px;color:#f4f4f5;min-width:36px;text-align:right;">1.00x</span>
+      </div>
+      <div style="font-size:9px;color:#52525b;margin-bottom:1rem;">Si el radar gira más rápido/lento que el robot, ajústalo</div>
+
+      <!-- Dirección de giro -->
+      <div class="tele-label" style="margin-bottom:6px;">Dirección de giro</div>
+      <div style="display:flex;gap:6px;margin-bottom:1rem;">
+        <button id="cal-dir-cw"  onclick="setDir(1)"  style="flex:1;padding:6px;border-radius:6px;border:1px solid #22c55e;background:rgba(34,197,94,0.15);color:#22c55e;font-size:10px;font-weight:700;cursor:pointer;">↻ Horario</button>
+        <button id="cal-dir-ccw" onclick="setDir(-1)" style="flex:1;padding:6px;border-radius:6px;border:1px solid #3f3f46;background:transparent;color:#71717a;font-size:10px;font-weight:700;cursor:pointer;">↺ Antihor.</button>
+      </div>
+
+      <!-- Umbral alerta -->
+      <div class="tele-label" style="margin-bottom:6px;">Umbral alerta (cm)</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+        <input type="range" id="cal-alert" min="10" max="200" value="30" style="flex:1;accent-color:#ef4444;">
+        <span id="cal-alert-val" style="font-family:monospace;font-size:11px;color:#f4f4f5;min-width:36px;text-align:right;">30cm</span>
+      </div>
+      <div style="font-size:9px;color:#52525b;margin-bottom:1rem;">Distancia mínima antes de marcar en rojo</div>
+
+      <!-- Reset -->
+      <button onclick="resetCal()" style="width:100%;padding:6px;border-radius:6px;border:1px solid #3f3f46;background:transparent;color:#71717a;font-size:10px;cursor:pointer;">Restablecer calibración</button>
+    </div>
+
     <div class="panel">
       <div class="panel-title">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
@@ -282,6 +324,10 @@
   let lastData = null;
   let points = [];     // { angle, distance, timestamp }
   let maxDistance = 100;
+  let calOffset = 0;     // degrees to add to incoming angle
+  let calScale  = 1.0;   // speed multiplier for angle
+  let calDir    = 1;     // 1=CW, -1=CCW
+  let alertDist = 30;    // cm threshold for red points
 
   // Connection stage tracking: 0=off 1=bt 2=gatt 3=uart 4=notify
   let connStage = 0;
@@ -316,6 +362,39 @@
     maxDistance = parseInt(rangeInput.value);
     rangeVal.textContent = maxDistance + 'cm';
   });
+
+  // ── Calibration controls ──────────────────────────────────────────────────
+  document.getElementById('cal-offset').addEventListener('input', function() {
+    calOffset = parseInt(this.value);
+    document.getElementById('cal-offset-val').textContent = calOffset + '°';
+  });
+  document.getElementById('cal-scale').addEventListener('input', function() {
+    calScale = parseFloat(this.value);
+    document.getElementById('cal-scale-val').textContent = calScale.toFixed(2) + 'x';
+  });
+  document.getElementById('cal-alert').addEventListener('input', function() {
+    alertDist = parseInt(this.value);
+    document.getElementById('cal-alert-val').textContent = alertDist + 'cm';
+  });
+  function setDir(d) {
+    calDir = d;
+    document.getElementById('cal-dir-cw').style.cssText  = d === 1
+      ? 'flex:1;padding:6px;border-radius:6px;border:1px solid #22c55e;background:rgba(34,197,94,0.15);color:#22c55e;font-size:10px;font-weight:700;cursor:pointer;'
+      : 'flex:1;padding:6px;border-radius:6px;border:1px solid #3f3f46;background:transparent;color:#71717a;font-size:10px;font-weight:700;cursor:pointer;';
+    document.getElementById('cal-dir-ccw').style.cssText = d === -1
+      ? 'flex:1;padding:6px;border-radius:6px;border:1px solid #22c55e;background:rgba(34,197,94,0.15);color:#22c55e;font-size:10px;font-weight:700;cursor:pointer;'
+      : 'flex:1;padding:6px;border-radius:6px;border:1px solid #3f3f46;background:transparent;color:#71717a;font-size:10px;font-weight:700;cursor:pointer;';
+  }
+  function resetCal() {
+    calOffset = 0; calScale = 1.0; calDir = 1; alertDist = 30;
+    document.getElementById('cal-offset').value = 0;
+    document.getElementById('cal-scale').value  = 1.0;
+    document.getElementById('cal-alert').value  = 30;
+    document.getElementById('cal-offset-val').textContent = '0°';
+    document.getElementById('cal-scale-val').textContent  = '1.00x';
+    document.getElementById('cal-alert-val').textContent  = '30cm';
+    setDir(1);
+  }
 
   // ─── BLUETOOTH ─────────────────────────────────────────────────────────────
   btnConnect.addEventListener('click', async () => {
@@ -477,6 +556,9 @@
     pktCount++;
     lastPktTimes.push(Date.now());
     if (lastPktTimes.length > 30) lastPktTimes.shift();
+    // Apply calibration: scale speed, direction flip, then offset
+    const rawAngle = angle;
+    angle = ((rawAngle * calScale * calDir) + calOffset + 3600) % 360;
     lastData = { angle, distance };
     const pt = { angle, distance, timestamp: Date.now() };
     points.push(pt);
@@ -558,7 +640,7 @@
     if (old) old.remove();
 
     const div = document.createElement('div');
-    div.className = 'log-entry' + (pt.distance < ALERT_DIST_CM ? ' alert' : '');
+    div.className = 'log-entry' + (pt.distance < alertDist ? ' alert' : '');
     const t = new Date(pt.timestamp).toLocaleTimeString([], { hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
     div.innerHTML = `[${t}]<br>SCAN: ${pt.angle}° | DIST: ${pt.distance}cm`;
     logList.prepend(div);
@@ -680,7 +762,7 @@
       const distRatio = Math.min(pt.distance / maxDistance, 1);
       const px = cx + Math.cos(angleRad) * R * distRatio;
       const py = cy + Math.sin(angleRad) * R * distRatio;
-      const isAlert = pt.distance < ALERT_DIST_CM;
+      const isAlert = pt.distance < alertDist;
 
       ctx.shadowBlur = isAlert ? 12 : 6;
       ctx.shadowColor = isAlert ? `rgba(239,68,68,${opacity})` : `rgba(34,197,94,${opacity})`;
