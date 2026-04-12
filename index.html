@@ -254,7 +254,8 @@
 <script>
   // ─── CONFIG ────────────────────────────────────────────────────────────────
   const UART_SERVICE   = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
-  const UART_TX_CHAR   = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+  const UART_TX_CHAR   = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // write to micro:bit
+  const UART_RX_CHAR   = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // notify FROM micro:bit
   const MAX_POINTS     = 200;
   const FADE_MS        = 5000;
   const ALERT_DIST_CM  = 30;
@@ -348,7 +349,18 @@
       const server  = await device.gatt.connect();
       showToast('Obteniendo servicio UART…');
       const service = await server.getPrimaryService(UART_SERVICE);
-      characteristic = await service.getCharacteristic(UART_TX_CHAR);
+
+      // Nordic UART: el Micro:bit *envía* datos por el characteristic RX (0003).
+      // Intentamos RX primero; si falla probamos TX por compatibilidad con firmware antiguo.
+      let rxChar = null;
+      try {
+        rxChar = await service.getCharacteristic(UART_RX_CHAR);
+        console.log('[BT] Usando characteristic RX (0003) para notificaciones');
+      } catch (e) {
+        console.warn('[BT] RX no disponible, probando TX (0002):', e.message);
+        rxChar = await service.getCharacteristic(UART_TX_CHAR);
+      }
+      characteristic = rxChar;
 
       await characteristic.startNotifications();
       characteristic.addEventListener('characteristicvaluechanged', onData);
@@ -387,13 +399,19 @@
   }
 
   function onData(event) {
-    const text = new TextDecoder().decode(event.target.value).trim();
+    const raw = new TextDecoder().decode(event.target.value);
+    const text = raw.trim();
+    console.log('[BT] datos recibidos:', JSON.stringify(text));
+    addRawLog(text); // muestra en log aunque no parsee
     let angle = NaN, distance = NaN;
     text.split(',').forEach(part => {
       if (part.startsWith('A:')) angle    = parseInt(part.slice(2));
       if (part.startsWith('D:')) distance = parseInt(part.slice(2));
     });
-    if (isNaN(angle) || isNaN(distance)) return;
+    if (isNaN(angle) || isNaN(distance)) {
+      console.warn('[BT] Formato inesperado:', JSON.stringify(text), '— esperado: A:45,D:20');
+      return;
+    }
 
     lastData = { angle, distance };
     const pt = { angle, distance, timestamp: Date.now() };
@@ -445,6 +463,22 @@
 
     // Trim log to 50 entries
     while (logList.children.length > 50) logList.removeChild(logList.lastChild);
+  }
+
+  // Muestra cualquier dato crudo recibido (aunque no parsee)
+  function addRawLog(text) {
+    const old = logList.querySelector('.log-empty');
+    if (old) old.remove();
+    // Si ya hay una entrada con este texto exacto en las últimas 3, no duplicar
+    const entries = logList.querySelectorAll('.log-raw');
+    if (entries.length > 0 && entries[0].dataset.text === text) return;
+    const div = document.createElement('div');
+    div.className = 'log-entry log-raw';
+    div.dataset.text = text;
+    const t = new Date().toLocaleTimeString([], { hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
+    div.innerHTML = \`[RAW \${t}] \${text}\`;
+    logList.prepend(div);
+    while (logList.children.length > 60) logList.removeChild(logList.lastChild);
   }
 
   // ─── TOAST ─────────────────────────────────────────────────────────────────
