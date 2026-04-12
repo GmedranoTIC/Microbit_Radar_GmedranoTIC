@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Micro:bit Radar Scanner</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green: #22c55e;
+      --green-dim: rgba(34,197,94,0.15);
+      --green-glow: rgba(34,197,94,0.4);
+      --red: #ef4444;
+      --red-glow: rgba(239,68,68,0.5);
+      --bg: #0a0a0a;
+      --surface: #111111;
+      --border: #27272a;
+      --text: #a1a1aa;
+      --text-bright: #f4f4f5;
+      --text-dim: #52525b;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* HEADER */
+    header {
+      position: sticky; top: 0; z-index: 50;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 1.5rem;
+      height: 64px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .logo { display: flex; align-items: center; gap: 0.75rem; }
+    .logo-icon {
+      width: 32px; height: 32px; border-radius: 6px;
+      background: var(--green-dim); border: 1px solid rgba(34,197,94,0.2);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .logo-title { font-size: 13px; font-weight: 700; color: var(--text-bright); text-transform: uppercase; letter-spacing: 0.1em; }
+    .logo-sub { font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.2em; }
+
+    #btn-connect {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 16px; border-radius: 9999px;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      border: 1px solid var(--border); background: #27272a; color: #d4d4d8;
+      transition: all 0.2s;
+    }
+    #btn-connect.connected {
+      background: var(--green-dim); color: var(--green);
+      border-color: rgba(34,197,94,0.3);
+    }
+    #btn-connect:hover { filter: brightness(1.2); }
+    #btn-connect svg { width: 14px; height: 14px; }
+
+    /* MAIN GRID */
+    main {
+      flex: 1;
+      max-width: 1280px; width: 100%; margin: 0 auto;
+      padding: 1.5rem;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.5rem;
+    }
+    @media (min-width: 900px) {
+      main { grid-template-columns: 240px 1fr 240px; }
+    }
+
+    /* PANELS */
+    .panel {
+      background: rgba(24,24,27,0.5);
+      border: 1px solid var(--border);
+      border-radius: 12px; padding: 1.25rem;
+    }
+    .panel-title {
+      display: flex; align-items: center; gap: 8px;
+      color: var(--text-dim); margin-bottom: 1rem;
+    }
+    .panel-title span {
+      font-size: 9px; text-transform: uppercase; letter-spacing: 0.2em; font-weight: 700;
+    }
+    .panel-title svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+    /* TELEMETRY */
+    .tele-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.2em; color: var(--text-dim); margin-bottom: 4px; }
+    .tele-value { font-size: 28px; font-family: monospace; color: var(--text-bright); font-weight: 700; }
+
+    .divider { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
+
+    input[type=range] {
+      width: 100%; accent-color: var(--green);
+      background: var(--border); height: 4px; border-radius: 4px;
+      appearance: none; cursor: pointer;
+    }
+    .range-labels { display: flex; justify-content: space-between; font-size: 10px; font-family: monospace; color: var(--text-dim); margin-top: 4px; }
+
+    /* STATUS */
+    .status-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .status-row:last-child { margin-bottom: 0; }
+    .status-name { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); }
+    .badge {
+      padding: 2px 8px; border-radius: 4px;
+      font-size: 8px; font-weight: 700; text-transform: uppercase;
+      background: #27272a; color: var(--text-dim);
+    }
+    .badge.active { background: var(--green-dim); color: var(--green); }
+
+    /* RADAR CENTER */
+    .radar-center { display: flex; flex-direction: column; align-items: center; gap: 1.5rem; }
+    .radar-wrap {
+      position: relative; width: 100%; max-width: 520px; aspect-ratio: 1;
+      border-radius: 50%; border: 3px solid var(--border);
+      background: #000; overflow: hidden;
+      box-shadow: 0 0 60px rgba(0,0,0,0.6), inset 0 0 30px rgba(0,0,0,0.4);
+    }
+    #radar-canvas { width: 100%; height: 100%; display: block; }
+    .radar-label {
+      position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+      font-family: monospace; font-size: 10px; color: rgba(34,197,94,0.4);
+      text-transform: uppercase; letter-spacing: 0.2em; pointer-events: none;
+    }
+
+    .legend { display: flex; gap: 2rem; }
+    .legend-item { display: flex; align-items: center; gap: 8px; }
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+    }
+    .dot.green { background: var(--green); box-shadow: 0 0 8px var(--green-glow); }
+    .dot.red   { background: var(--red);   box-shadow: 0 0 8px var(--red-glow); }
+    .legend-item span { font-size: 9px; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 700; }
+
+    /* LOG */
+    .log-list { overflow-y: auto; max-height: 340px; display: flex; flex-direction: column; gap: 6px; }
+    .log-list::-webkit-scrollbar { width: 4px; }
+    .log-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .log-entry {
+      padding: 8px; border-radius: 6px; border: 1px solid rgba(39,39,42,0.5);
+      font-family: monospace; font-size: 10px; line-height: 1.6;
+      background: rgba(39,39,42,0.3); color: var(--text-dim);
+      animation: fadeIn 0.2s ease;
+    }
+    .log-entry.alert { background: rgba(239,68,68,0.05); color: #f87171; }
+    @keyframes fadeIn { from { opacity:0; transform: translateX(-6px); } to { opacity:1; transform: none; } }
+    .log-empty { font-size: 10px; color: var(--text-dim); font-style: italic; }
+
+    /* FOOTER */
+    footer {
+      height: 4px;
+      background: linear-gradient(to right, transparent, rgba(34,197,94,0.2), transparent);
+    }
+
+    /* NOTIFICATION TOAST */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #18181b; border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 18px; font-size: 12px; color: var(--text);
+      display: none; z-index: 999;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+    }
+    #toast.show { display: block; animation: fadeIn 0.2s ease; }
+    #toast.error { border-color: rgba(239,68,68,0.4); color: #f87171; }
+    #toast.success { border-color: rgba(34,197,94,0.4); color: var(--green); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">⚡</div>
+    <div>
+      <div class="logo-title">Micro:bit Radar</div>
+      <div class="logo-sub">Tactical Scanner v1.0</div>
+    </div>
+  </div>
+  <button id="btn-connect">
+    <svg id="bt-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6.5 6.5 17.5 17.5M6.5 17.5l5-5 5 5V6.5l-5 5-5-5"/>
+    </svg>
+    <span id="btn-text">Conectar Micro:bit</span>
+  </button>
+</header>
+
+<main>
+  <!-- LEFT -->
+  <div style="display:flex; flex-direction:column; gap:1.25rem;">
+    <div class="panel">
+      <div class="panel-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span>Telemetría</span>
+      </div>
+      <div style="margin-bottom:1rem;">
+        <div class="tele-label">Ángulo Actual</div>
+        <div class="tele-value" id="tele-angle">--°</div>
+      </div>
+      <div>
+        <div class="tele-label">Distancia</div>
+        <div class="tele-value" id="tele-dist">-- cm</div>
+      </div>
+      <hr class="divider">
+      <div class="tele-label" style="margin-bottom:8px;">Rango de Escaneo</div>
+      <input type="range" id="range-dist" min="50" max="400" value="100">
+      <div class="range-labels"><span>50cm</span><span id="range-val">100cm</span></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+        <span>Estado del Sistema</span>
+      </div>
+      <div class="status-row"><span class="status-name">Bluetooth</span><span class="badge" id="st-bt">Offline</span></div>
+      <div class="status-row"><span class="status-name">Ultrasonidos</span><span class="badge" id="st-us">Offline</span></div>
+      <div class="status-row"><span class="status-name">Cutebot Pro</span><span class="badge" id="st-cb">Offline</span></div>
+    </div>
+  </div>
+
+  <!-- CENTER -->
+  <div class="radar-center">
+    <div class="radar-wrap">
+      <canvas id="radar-canvas" width="600" height="600"></canvas>
+      <div class="radar-label">Radar System Active</div>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><div class="dot red"></div><span>Objeto Detectado</span></div>
+      <div class="legend-item"><div class="dot green"></div><span>Vía Libre</span></div>
+    </div>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="panel" style="display:flex; flex-direction:column;">
+    <div class="panel-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      <span>Registro de Actividad</span>
+    </div>
+    <div class="log-list" id="log-list">
+      <div class="log-empty">Esperando flujo de datos...</div>
+    </div>
+  </div>
+</main>
+
+<footer></footer>
+<div id="toast"></div>
+
+<script>
+  // ─── CONFIG ────────────────────────────────────────────────────────────────
+  const UART_SERVICE   = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+  const UART_TX_CHAR   = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+  const MAX_POINTS     = 200;
+  const FADE_MS        = 5000;
+  const ALERT_DIST_CM  = 30;
+
+  // ─── STATE ─────────────────────────────────────────────────────────────────
+  let device = null, characteristic = null;
+  let connected = false;
+  let lastData = null;
+  let points = [];     // { angle, distance, timestamp }
+  let maxDistance = 100;
+
+  // ─── DOM ───────────────────────────────────────────────────────────────────
+  const btnConnect  = document.getElementById('btn-connect');
+  const btnText     = document.getElementById('btn-text');
+  const btIcon      = document.getElementById('bt-icon');
+  const teAngle     = document.getElementById('tele-angle');
+  const teDist      = document.getElementById('tele-dist');
+  const rangeInput  = document.getElementById('range-dist');
+  const rangeVal    = document.getElementById('range-val');
+  const stBt        = document.getElementById('st-bt');
+  const stUs        = document.getElementById('st-us');
+  const stCb        = document.getElementById('st-cb');
+  const logList     = document.getElementById('log-list');
+  const canvas      = document.getElementById('radar-canvas');
+  const ctx         = canvas.getContext('2d');
+  const toast       = document.getElementById('toast');
+
+  // ─── RANGE SLIDER ──────────────────────────────────────────────────────────
+  rangeInput.addEventListener('input', () => {
+    maxDistance = parseInt(rangeInput.value);
+    rangeVal.textContent = maxDistance + 'cm';
+  });
+
+  // ─── BLUETOOTH ─────────────────────────────────────────────────────────────
+  btnConnect.addEventListener('click', async () => {
+    if (connected) { doDisconnect(); return; }
+    if (!navigator.bluetooth) {
+      showToast('⚠ Web Bluetooth no está disponible. Usa Chrome o Edge.', 'error');
+      return;
+    }
+    await doConnect();
+  });
+
+  async function doConnect() {
+    try {
+      showToast('Buscando dispositivos Bluetooth…');
+      device = await navigator.bluetooth.requestDevice({
+        filters: [{ namePrefix: 'BBC micro:bit' }],
+        optionalServices: [UART_SERVICE]
+      });
+      device.addEventListener('gattserverdisconnected', onDisconnected);
+
+      const server  = await device.gatt.connect();
+      const service = await server.getPrimaryService(UART_SERVICE);
+      characteristic = await service.getCharacteristic(UART_TX_CHAR);
+
+      await characteristic.startNotifications();
+      characteristic.addEventListener('characteristicvaluechanged', onData);
+
+      setConnected(true);
+      showToast('✓ Conectado a ' + device.name, 'success');
+    } catch (err) {
+      console.error(err);
+      if (err.name !== 'NotFoundError') {
+        showToast('Error de conexión: ' + err.message, 'error');
+      }
+    }
+  }
+
+  function doDisconnect() {
+    if (device?.gatt?.connected) device.gatt.disconnect();
+    setConnected(false);
+    showToast('Desconectado del Micro:bit');
+  }
+
+  function onDisconnected() {
+    setConnected(false);
+    showToast('Micro:bit desconectado', 'error');
+  }
+
+  function onData(event) {
+    const text = new TextDecoder().decode(event.target.value).trim();
+    let angle = NaN, distance = NaN;
+    text.split(',').forEach(part => {
+      if (part.startsWith('A:')) angle    = parseInt(part.slice(2));
+      if (part.startsWith('D:')) distance = parseInt(part.slice(2));
+    });
+    if (isNaN(angle) || isNaN(distance)) return;
+
+    lastData = { angle, distance };
+    const pt = { angle, distance, timestamp: Date.now() };
+    points.push(pt);
+    if (points.length > MAX_POINTS) points = points.slice(-MAX_POINTS);
+
+    updateTelemetry();
+    addLogEntry(pt);
+    updateStatus();
+  }
+
+  function setConnected(val) {
+    connected = val;
+    btnConnect.classList.toggle('connected', val);
+    btnText.textContent = val ? 'Conectado' : 'Conectar Micro:bit';
+    btIcon.innerHTML = val
+      ? '<polyline points="6.5 6.5 12 12 6.5 17.5"/><polyline points="12 12 17.5 17.5"/><polyline points="12 6.5 17.5 12"/>'
+      : '<path d="M6.5 6.5 17.5 17.5M6.5 17.5l5-5 5 5V6.5l-5 5-5-5"/>';
+    updateStatus();
+    if (!val) { lastData = null; teAngle.textContent = '--°'; teDist.textContent = '-- cm'; }
+  }
+
+  // ─── UI UPDATES ────────────────────────────────────────────────────────────
+  function updateTelemetry() {
+    if (!lastData) return;
+    teAngle.textContent = lastData.angle + '°';
+    teDist.textContent  = lastData.distance + ' cm';
+  }
+
+  function updateStatus() {
+    const setBadge = (el, active) => {
+      el.textContent = active ? 'Online' : 'Offline';
+      el.className = 'badge' + (active ? ' active' : '');
+    };
+    setBadge(stBt, connected);
+    setBadge(stUs, connected && !!lastData);
+    setBadge(stCb, connected);
+  }
+
+  function addLogEntry(pt) {
+    const old = logList.querySelector('.log-empty');
+    if (old) old.remove();
+
+    const div = document.createElement('div');
+    div.className = 'log-entry' + (pt.distance < ALERT_DIST_CM ? ' alert' : '');
+    const t = new Date(pt.timestamp).toLocaleTimeString([], { hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
+    div.innerHTML = `[${t}]<br>SCAN: ${pt.angle}° | DIST: ${pt.distance}cm`;
+    logList.prepend(div);
+
+    // Trim log to 50 entries
+    while (logList.children.length > 50) logList.removeChild(logList.lastChild);
+  }
+
+  // ─── TOAST ─────────────────────────────────────────────────────────────────
+  let toastTimer = null;
+  function showToast(msg, type = '') {
+    toast.textContent = msg;
+    toast.className = 'show' + (type ? ' ' + type : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toast.className = ''; }, 3000);
+  }
+
+  // ─── RADAR RENDER ──────────────────────────────────────────────────────────
+  function render() {
+    const W = canvas.width, H = canvas.height;
+    const cx = W / 2, cy = H / 2;
+    const R = Math.min(cx, cy) - 24;
+    const now = Date.now();
+
+    // Background
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+
+    // Concentric grid circles
+    for (let i = 1; i <= 4; i++) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, (R / 4) * i, 0, Math.PI * 2);
+      ctx.strokeStyle = '#0d2e0d';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Distance label
+      const dist = Math.round((maxDistance / 4) * i);
+      ctx.fillStyle = '#1a4a1a';
+      ctx.font = '10px monospace';
+      ctx.fillText(dist + 'cm', cx + 6, cy - (R / 4) * i - 4);
+    }
+
+    // Radial spokes every 30°
+    ctx.strokeStyle = '#0d2e0d';
+    ctx.lineWidth = 1;
+    for (let a = 0; a < 360; a += 30) {
+      const rad = (a * Math.PI) / 180;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(rad) * R, cy + Math.sin(rad) * R);
+      ctx.stroke();
+    }
+
+    // Angle labels (0°=top, 90°=right, etc.)
+    ctx.fillStyle = '#2a5a2a';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    [0, 45, 90, 135, 180, 225, 270, 315].forEach(a => {
+      const rad = ((a - 90) * Math.PI) / 180;
+      const lx = cx + Math.cos(rad) * (R + 14);
+      const ly = cy + Math.sin(rad) * (R + 14);
+      ctx.fillText(a + '°', lx, ly);
+    });
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+
+    // Sweep line & fill (based on latest point)
+    if (points.length > 0) {
+      const latest = points[points.length - 1];
+      const sweepRad = ((latest.angle - 90) * Math.PI) / 180;
+
+      // Swept sector glow
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
+      grad.addColorStop(0, 'rgba(34,197,94,0)');
+      grad.addColorStop(1, 'rgba(34,197,94,0.12)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, R, sweepRad - 0.25, sweepRad);
+      ctx.lineTo(cx, cy);
+      ctx.fill();
+
+      // Sweep arm
+      ctx.strokeStyle = 'rgba(34,197,94,0.85)';
+      ctx.lineWidth = 2;
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = 'rgba(34,197,94,0.6)';
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(sweepRad) * R, cy + Math.sin(sweepRad) * R);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    // Points
+    points.forEach(pt => {
+      const age = now - pt.timestamp;
+      if (age > FADE_MS) return;
+      const opacity = 1 - age / FADE_MS;
+      const angleRad = ((pt.angle - 90) * Math.PI) / 180;
+      const distRatio = Math.min(pt.distance / maxDistance, 1);
+      const px = cx + Math.cos(angleRad) * R * distRatio;
+      const py = cy + Math.sin(angleRad) * R * distRatio;
+      const isAlert = pt.distance < ALERT_DIST_CM;
+
+      ctx.shadowBlur = isAlert ? 12 : 6;
+      ctx.shadowColor = isAlert ? `rgba(239,68,68,${opacity})` : `rgba(34,197,94,${opacity})`;
+      ctx.fillStyle = isAlert ? `rgba(239,68,68,${opacity})` : `rgba(34,197,94,${opacity})`;
+      ctx.beginPath();
+      ctx.arc(px, py, isAlert ? 5 : 4, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.shadowBlur = 0;
+
+    requestAnimationFrame(render);
+  }
+
+  requestAnimationFrame(render);
+</script>
+</body>
+</html>
