@@ -218,9 +218,25 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
         <span>Estado del Sistema</span>
       </div>
-      <div class="status-row"><span class="status-name">Bluetooth</span><span class="badge" id="st-bt">Offline</span></div>
+      <div class="status-row"><span class="status-name">BT Dispositivo</span><span class="badge" id="st-bt">Offline</span></div>
+      <div class="status-row"><span class="status-name">GATT</span><span class="badge" id="st-gatt">Offline</span></div>
+      <div class="status-row"><span class="status-name">UART Servicio</span><span class="badge" id="st-uart">Offline</span></div>
+      <div class="status-row"><span class="status-name">Notificaciones</span><span class="badge" id="st-notify">Offline</span></div>
       <div class="status-row"><span class="status-name">Ultrasonidos</span><span class="badge" id="st-us">Offline</span></div>
       <div class="status-row"><span class="status-name">Cutebot Pro</span><span class="badge" id="st-cb">Offline</span></div>
+      <hr style="border:none;border-top:1px solid #27272a;margin:8px 0;">
+      <div class="status-row">
+        <span class="status-name">Freq. datos</span>
+        <span class="badge" id="st-rate" style="font-family:monospace;">-- Hz</span>
+      </div>
+      <div class="status-row">
+        <span class="status-name">Paquetes OK</span>
+        <span class="badge" id="st-pkts" style="font-family:monospace;">0</span>
+      </div>
+      <div class="status-row">
+        <span class="status-name">Errores parse</span>
+        <span class="badge" id="st-errs" style="font-family:monospace;background:transparent;color:#71717a;">0</span>
+      </div>
     </div>
   </div>
 
@@ -267,6 +283,12 @@
   let points = [];     // { angle, distance, timestamp }
   let maxDistance = 100;
 
+  // Connection stage tracking: 0=off 1=bt 2=gatt 3=uart 4=notify
+  let connStage = 0;
+  let pktCount = 0;
+  let errCount = 0;
+  let lastPktTimes = []; // for Hz calculation
+
   // ─── DOM ───────────────────────────────────────────────────────────────────
   const btnConnect  = document.getElementById('btn-connect');
   const btnText     = document.getElementById('btn-text');
@@ -276,8 +298,14 @@
   const rangeInput  = document.getElementById('range-dist');
   const rangeVal    = document.getElementById('range-val');
   const stBt        = document.getElementById('st-bt');
+  const stGatt      = document.getElementById('st-gatt');
+  const stUart      = document.getElementById('st-uart');
+  const stNotify    = document.getElementById('st-notify');
   const stUs        = document.getElementById('st-us');
   const stCb        = document.getElementById('st-cb');
+  const stRate      = document.getElementById('st-rate');
+  const stPkts      = document.getElementById('st-pkts');
+  const stErrs      = document.getElementById('st-errs');
   const logList     = document.getElementById('log-list');
   const canvas      = document.getElementById('radar-canvas');
   const ctx         = canvas.getContext('2d');
@@ -337,53 +365,84 @@
   });
 
   async function doConnect() {
+    const step = (msg) => { console.log('[BT]', msg); showToast(msg); };
+
+    // PASO 1: selector de dispositivo
+    step('Buscando dispositivos…');
     try {
-      showToast('Buscando dispositivos Bluetooth…');
       device = await navigator.bluetooth.requestDevice({
         filters: [{ namePrefix: 'BBC micro:bit' }],
         optionalServices: [UART_SERVICE]
       });
-      device.addEventListener('gattserverdisconnected', onDisconnected);
+    } catch(err) {
+      if (err.name !== 'NotFoundError') showDiag('Error al buscar dispositivo', '<code>' + err.name + ': ' + err.message + '</code>');
+      return;
+    }
+    device.addEventListener('gattserverdisconnected', onDisconnected);
+    connStage = 1; updateStatus();
 
-      showToast('Conectando al servidor GATT…');
-      const server  = await device.gatt.connect();
-      showToast('Obteniendo servicio UART…');
-      const service = await server.getPrimaryService(UART_SERVICE);
+    // PASO 2: conexión GATT
+    step('Conectando GATT a ' + device.name + '…');
+    let server;
+    try { server = await device.gatt.connect(); connStage = 2; updateStatus(); }
+    catch(err) { showDiag('Error GATT connect', '<code>' + err.name + ': ' + err.message + '</code><br><br>Reinicia el Micro:bit y vuelve a intentarlo.'); return; }
 
-      // Nordic UART: el Micro:bit *envía* datos por el characteristic RX (0003).
-      // Intentamos RX primero; si falla probamos TX por compatibilidad con firmware antiguo.
-      let rxChar = null;
+    // PASO 3: servicio UART
+    step('Buscando servicio UART…');
+    let service;
+    try { service = await server.getPrimaryService(UART_SERVICE); connStage = 3; updateStatus(); }
+    catch(err) {
+      showDiag('Servicio UART no encontrado',
+        'El Micro:bit no expone el servicio UART.<br><br>' +
+        '<b>Causa más probable:</b> el programa MakeCode no tiene <code>bluetooth.startUartService()</code>.<br><br>' +
+        'Carga el código del README en la placa y vuelve a intentarlo.<br><br>' +
+        '<code>' + err.name + ': ' + err.message + '</code>');
+      return;
+    }
+
+    // PASO 4: listar y mostrar todos los characteristics (debug)
+    step('Inspeccionando characteristics…');
+    try {
+      const all = await service.getCharacteristics();
+      const uuids = all.map(function(c) { return c.uuid; });
+      console.log('[BT] Characteristics disponibles:', uuids);
+      uuids.forEach(function(u) { console.log(' -', u, '| notify:', all.find(function(c){ return c.uuid===u; }).properties.notify); });
+    } catch(e) { console.warn('[BT] No se pudo listar characteristics:', e.message); }
+
+    // PASO 5: obtener characteristic con notify — probar 0003 (RX) y 0002 (TX)
+    let rxChar = null;
+    for (const uuid of [UART_RX_CHAR, UART_TX_CHAR]) {
       try {
-        rxChar = await service.getCharacteristic(UART_RX_CHAR);
-        console.log('[BT] Usando characteristic RX (0003) para notificaciones');
-      } catch (e) {
-        console.warn('[BT] RX no disponible, probando TX (0002):', e.message);
-        rxChar = await service.getCharacteristic(UART_TX_CHAR);
-      }
+        const c = await service.getCharacteristic(uuid);
+        if (c.properties.notify || c.properties.indicate) {
+          rxChar = c;
+          console.log('[BT] Usando', uuid, 'para notificaciones');
+          break;
+        } else {
+          console.warn('[BT]', uuid, 'no tiene notify/indicate, descartando');
+        }
+      } catch(e) { console.warn('[BT] No disponible:', uuid, '-', e.message); }
+    }
+
+    if (!rxChar) {
+      showDiag('Characteristic de datos no encontrado',
+        'Se encontró el servicio UART pero ningún characteristic tiene la propiedad <b>notify</b>.<br><br>' +
+        'Revisa la consola (F12 → Console) para ver los UUIDs disponibles.<br><br>' +
+        'Asegúrate de que el programa MakeCode usa <code>bluetooth.uartWriteString()</code> dentro de un bucle.');
+      return;
+    }
+
+    // PASO 6: activar notificaciones
+    step('Activando notificaciones…');
+    try {
+      await rxChar.startNotifications();
+      rxChar.addEventListener('characteristicvaluechanged', onData);
       characteristic = rxChar;
-
-      await characteristic.startNotifications();
-      characteristic.addEventListener('characteristicvaluechanged', onData);
-
+      connStage = 4;
       setConnected(true);
       showToast('✓ Conectado a ' + device.name, 'success');
-    } catch (err) {
-      console.error(err);
-      if (err.name === 'NotFoundError') return; // usuario canceló el selector
-
-      let msg = '';
-      if (err.name === 'SecurityError') {
-        msg = '🔒 Permiso denegado por el navegador. Asegúrate de que la página está en HTTPS y de que el sistema operativo permite Bluetooth al navegador.';
-      } else if (err.message?.includes('UART') || err.message?.includes('getPrimaryService')) {
-        msg = '⚠️ El Micro:bit conectado no tiene el servicio UART activo.<br><br>' +
-              'El programa cargado en el Micro:bit debe llamar a <code>bluetooth.startUartService()</code>.<br>' +
-              'Revisa el código MakeCode del README.';
-      } else if (err.name === 'NetworkError') {
-        msg = '📡 Error de red Bluetooth. Intenta:<br>• Acercar el Micro:bit al ordenador<br>• Desactivar y reactivar el Bluetooth del sistema<br>• Reiniciar el Micro:bit (botón de reset)';
-      } else {
-        msg = '<code>' + err.name + ': ' + err.message + '</code>';
-      }
-      showDiag('Error de conexión', msg);
+    } catch(err) {
+      showDiag('Error al activar notificaciones', '<code>' + err.name + ': ' + err.message + '</code>');
     }
   }
 
@@ -410,9 +469,14 @@
     });
     if (isNaN(angle) || isNaN(distance)) {
       console.warn('[BT] Formato inesperado:', JSON.stringify(text), '— esperado: A:45,D:20');
+      errCount++;
+      updateStatus();
       return;
     }
 
+    pktCount++;
+    lastPktTimes.push(Date.now());
+    if (lastPktTimes.length > 30) lastPktTimes.shift();
     lastData = { angle, distance };
     const pt = { angle, distance, timestamp: Date.now() };
     points.push(pt);
@@ -425,6 +489,7 @@
 
   function setConnected(val) {
     connected = val;
+    if (!val) { connStage = 0; pktCount = 0; errCount = 0; lastPktTimes = []; }
     btnConnect.classList.toggle('connected', val);
     btnText.textContent = val ? 'Conectado' : 'Conectar Micro:bit';
     btIcon.innerHTML = val
@@ -442,13 +507,50 @@
   }
 
   function updateStatus() {
-    const setBadge = (el, active) => {
-      el.textContent = active ? 'Online' : 'Offline';
-      el.className = 'badge' + (active ? ' active' : '');
+    const set = (el, state) => {
+      // state: 'ok' | 'warn' | 'err' | 'off'
+      const labels = { ok: 'Online', warn: 'Parcial', err: 'Error', off: 'Offline' };
+      const colors = {
+        ok:   'background:rgba(34,197,94,0.12);color:#22c55e;',
+        warn: 'background:rgba(234,179,8,0.12);color:#eab308;',
+        err:  'background:rgba(239,68,68,0.12);color:#ef4444;',
+        off:  'background:#27272a;color:#52525b;'
+      };
+      el.textContent = labels[state] || state;
+      el.style.cssText = colors[state] || colors.off;
     };
-    setBadge(stBt, connected);
-    setBadge(stUs, connected && !!lastData);
-    setBadge(stCb, connected);
+
+    // BT Dispositivo
+    set(stBt,     connStage >= 1 ? 'ok' : 'off');
+    // GATT
+    set(stGatt,   connStage >= 2 ? 'ok' : connStage === 1 ? 'warn' : 'off');
+    // UART Servicio
+    set(stUart,   connStage >= 3 ? 'ok' : connStage === 2 ? 'warn' : 'off');
+    // Notificaciones activas
+    set(stNotify, connStage >= 4 ? 'ok' : connStage === 3 ? 'warn' : 'off');
+    // Ultrasonidos: recibiendo datos
+    const hasData = connected && !!lastData;
+    set(stUs, hasData ? 'ok' : connStage >= 4 ? 'warn' : 'off');
+    // Cutebot Pro: asumimos OK si tenemos datos de distancia válidos
+    const cbOk = hasData && lastData.distance >= 0 && lastData.distance < 500;
+    set(stCb, cbOk ? 'ok' : connStage >= 4 ? 'warn' : 'off');
+
+    // Frecuencia de datos
+    const now = Date.now();
+    lastPktTimes = lastPktTimes.filter(t => now - t < 3000);
+    const hz = lastPktTimes.length > 1
+      ? ((lastPktTimes.length - 1) / ((lastPktTimes[lastPktTimes.length-1] - lastPktTimes[0]) / 1000)).toFixed(1)
+      : '0.0';
+    stRate.textContent = hz + ' Hz';
+    stRate.style.cssText = parseFloat(hz) > 0
+      ? 'font-family:monospace;background:rgba(34,197,94,0.1);color:#22c55e;'
+      : 'font-family:monospace;background:#27272a;color:#52525b;';
+
+    stPkts.textContent = pktCount;
+    stErrs.textContent = errCount;
+    stErrs.style.cssText = errCount > 0
+      ? 'font-family:monospace;background:rgba(239,68,68,0.1);color:#ef4444;'
+      : 'font-family:monospace;background:transparent;color:#52525b;';
   }
 
   function addLogEntry(pt) {
