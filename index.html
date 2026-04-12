@@ -476,7 +476,7 @@
     div.className = 'log-entry log-raw';
     div.dataset.text = text;
     const t = new Date().toLocaleTimeString([], { hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
-    div.innerHTML = \`[RAW \${t}] \${text}\`;
+    div.innerHTML = '[RAW ' + t + '] ' + text;
     logList.prepend(div);
     while (logList.children.length > 60) logList.removeChild(logList.lastChild);
   }
