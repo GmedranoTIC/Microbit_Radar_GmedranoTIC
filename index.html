@@ -249,7 +249,30 @@
 </main>
 
 <footer></footer>
-<div id="toast"></div>
+<!-- DIAGNOSTIC MODAL -->
+<div id="diag-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:200; align-items:center; justify-content:center;">
+  <div style="background:#18181b; border:1px solid #3f3f46; border-radius:14px; padding:1.75rem; max-width:440px; width:90%; position:relative;">
+    <button onclick="closeDiag()" style="position:absolute;top:12px;right:14px;background:none;border:none;color:#71717a;font-size:20px;cursor:pointer;">✕</button>
+    <div id="diag-title" style="font-size:15px;font-weight:700;color:#f4f4f5;margin-bottom:1rem;"></div>
+    <div id="diag-body" style="font-size:13px;line-height:1.7;color:#a1a1aa;"></div>
+    <div style="margin-top:1.25rem; padding-top:1rem; border-top:1px solid #27272a;">
+      <button onclick="closeDiag()" style="padding:8px 20px;background:#22c55e;color:#000;border:none;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;">Entendido</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function showDiag(title, body) {
+    document.getElementById('diag-title').innerHTML = title;
+    document.getElementById('diag-body').innerHTML  = body;
+    const ov = document.getElementById('diag-overlay');
+    ov.style.display = 'flex';
+  }
+  function closeDiag() {
+    document.getElementById('diag-overlay').style.display = 'none';
+  }
+</script>
+
 
 <script>
   // ─── CONFIG ────────────────────────────────────────────────────────────────
@@ -291,10 +314,47 @@
   // ─── BLUETOOTH ─────────────────────────────────────────────────────────────
   btnConnect.addEventListener('click', async () => {
     if (connected) { doDisconnect(); return; }
-    if (!navigator.bluetooth) {
-      showToast('⚠ Web Bluetooth no está disponible. Usa Chrome o Edge.', 'error');
+
+    // ── Diagnóstico completo antes de intentar conectar ──────────────────
+    const isSecure = location.protocol === 'https:' || location.hostname === 'localhost';
+    const hasBT    = 'bluetooth' in navigator;
+
+    if (!isSecure) {
+      showDiag('🔒 Contexto no seguro',
+        'Web Bluetooth solo funciona en <strong>HTTPS</strong> o localhost.<br>' +
+        'Estás en: <code>' + location.protocol + '//' + location.hostname + '</code><br><br>' +
+        'Sube el archivo a GitHub Pages o usa un servidor local.');
       return;
     }
+
+    if (!hasBT) {
+      // Intentar detectar si es un flag desactivado vs navegador incompatible
+      const ua = navigator.userAgent;
+      const isChrome = /Chrome\/(\d+)/.exec(ua);
+      const chromeVer = isChrome ? parseInt(isChrome[1]) : 0;
+
+      if (/Firefox|Safari/.test(ua) && !/Chrome/.exec(ua)) {
+        showDiag('🚫 Navegador incompatible',
+          'Web Bluetooth <strong>no funciona en Firefox ni Safari</strong>.<br><br>' +
+          '✅ Usa <strong>Google Chrome</strong> o <strong>Microsoft Edge</strong> (escritorio).');
+        return;
+      }
+      if (chromeVer > 0 && chromeVer < 56) {
+        showDiag('🚫 Chrome desactualizado',
+          'Web Bluetooth requiere Chrome 56+. Tienes Chrome ' + chromeVer + '.<br>Actualiza el navegador.');
+        return;
+      }
+      // Chrome moderno pero API ausente → flag desactivado
+      showDiag('⚠️ Web Bluetooth desactivado',
+        'Estás en Chrome con HTTPS, pero <code>navigator.bluetooth</code> no existe.<br><br>' +
+        'Actívalo en:<br>' +
+        '<code>chrome://flags/#enable-experimental-web-platform-features</code><br><br>' +
+        'Busca "<strong>Experimental Web Platform features</strong>", ponlo en <strong>Enabled</strong> y reinicia Chrome.<br><br>' +
+        '<em>Nota: en Chrome 117+ esta flag puede llamarse "Web Bluetooth".</em>');
+      return;
+    }
+
+    // API disponible — intentar conectar
     await doConnect();
   });
 
@@ -307,7 +367,9 @@
       });
       device.addEventListener('gattserverdisconnected', onDisconnected);
 
+      showToast('Conectando al servidor GATT…');
       const server  = await device.gatt.connect();
+      showToast('Obteniendo servicio UART…');
       const service = await server.getPrimaryService(UART_SERVICE);
       characteristic = await service.getCharacteristic(UART_TX_CHAR);
 
@@ -318,9 +380,21 @@
       showToast('✓ Conectado a ' + device.name, 'success');
     } catch (err) {
       console.error(err);
-      if (err.name !== 'NotFoundError') {
-        showToast('Error de conexión: ' + err.message, 'error');
+      if (err.name === 'NotFoundError') return; // usuario canceló el selector
+
+      let msg = '';
+      if (err.name === 'SecurityError') {
+        msg = '🔒 Permiso denegado por el navegador. Asegúrate de que la página está en HTTPS y de que el sistema operativo permite Bluetooth al navegador.';
+      } else if (err.message?.includes('UART') || err.message?.includes('getPrimaryService')) {
+        msg = '⚠️ El Micro:bit conectado no tiene el servicio UART activo.<br><br>' +
+              'El programa cargado en el Micro:bit debe llamar a <code>bluetooth.startUartService()</code>.<br>' +
+              'Revisa el código MakeCode del README.';
+      } else if (err.name === 'NetworkError') {
+        msg = '📡 Error de red Bluetooth. Intenta:<br>• Acercar el Micro:bit al ordenador<br>• Desactivar y reactivar el Bluetooth del sistema<br>• Reiniciar el Micro:bit (botón de reset)';
+      } else {
+        msg = '<code>' + err.name + ': ' + err.message + '</code>';
       }
+      showDiag('Error de conexión', msg);
     }
   }
 
