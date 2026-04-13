@@ -33,12 +33,57 @@
     /* HEADER */
     header {
       position: sticky; top: 0; z-index: 50;
-      background: rgba(0,0,0,0.7);
-      backdrop-filter: blur(12px);
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(14px);
       border-bottom: 1px solid var(--border);
       padding: 0 1.5rem;
       height: 64px;
-      display: flex; align-items: center; justify-content: space-between;
+      display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    }
+    .header-nav {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    }
+    .nav-btn {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 13px; border-radius: 9999px;
+      font-size: 11px; font-weight: 600; cursor: pointer;
+      border: 1px solid var(--border); background: #18181b; color: #a1a1aa;
+      transition: all 0.18s; white-space: nowrap;
+    }
+    .nav-btn svg { width: 13px; height: 13px; flex-shrink: 0; }
+    .nav-btn:hover { background: #27272a; color: #f4f4f5; }
+    .nav-btn.open {
+      background: var(--green-dim); color: var(--green);
+      border-color: rgba(34,197,94,0.35);
+    }
+
+    /* DROPDOWN PANELS BAR */
+    #panels-bar {
+      position: sticky; top: 64px; z-index: 40;
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid transparent;
+      transition: border-color 0.2s;
+    }
+    #panels-bar:has(.drop-panel.open) {
+      border-bottom-color: var(--border);
+    }
+    .drop-panel {
+      overflow: hidden;
+      max-height: 0;
+      transition: max-height 0.3s ease, opacity 0.25s ease;
+      opacity: 0;
+    }
+    .drop-panel.open {
+      max-height: 300px;
+      opacity: 1;
+    }
+    .drop-inner {
+      padding: 1rem 1.5rem;
+      border-top: 1px solid var(--border);
+    }
+    .drop-cols {
+      display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-start;
     }
     .logo { display: flex; align-items: center; gap: 0.75rem; }
     .logo-icon {
@@ -64,33 +109,14 @@
     #btn-connect:hover { filter: brightness(1.2); }
     #btn-connect svg { width: 14px; height: 14px; }
 
-    /* MAIN GRID */
+    /* MAIN */
     main {
       flex: 1;
-      max-width: 1280px; width: 100%; margin: 0 auto;
+      display: flex; align-items: center; justify-content: center;
       padding: 1.5rem;
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 1.5rem;
-    }
-    @media (min-width: 900px) {
-      main { grid-template-columns: 240px 1fr 240px; }
     }
 
-    /* PANELS */
-    .panel {
-      background: rgba(24,24,27,0.5);
-      border: 1px solid var(--border);
-      border-radius: 12px; padding: 1.25rem;
-    }
-    .panel-title {
-      display: flex; align-items: center; gap: 8px;
-      color: var(--text-dim); margin-bottom: 1rem;
-    }
-    .panel-title span {
-      font-size: 9px; text-transform: uppercase; letter-spacing: 0.2em; font-weight: 700;
-    }
-    .panel-title svg { width: 14px; height: 14px; flex-shrink: 0; }
+
 
     /* TELEMETRY */
     .tele-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.2em; color: var(--text-dim); margin-bottom: 4px; }
@@ -126,9 +152,12 @@
     }
     #radar-canvas { width: 100%; height: 100%; display: block; }
     .radar-label {
-      position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
-      font-family: monospace; font-size: 10px; color: rgba(34,197,94,0.4);
-      text-transform: uppercase; letter-spacing: 0.2em; pointer-events: none;
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-family: monospace; font-size: 11px; color: rgba(34,197,94,0.25);
+      text-transform: uppercase; letter-spacing: 0.18em; pointer-events: none;
+      text-align: center; line-height: 1.8; white-space: nowrap;
     }
 
     .legend { display: flex; gap: 2rem; }
@@ -171,18 +200,52 @@
     #toast.show { display: block; animation: fadeIn 0.2s ease; }
     #toast.error { border-color: rgba(239,68,68,0.4); color: #f87171; }
     #toast.success { border-color: rgba(34,197,94,0.4); color: var(--green); }
+
+
   </style>
 </head>
 <body>
 
 <header>
   <div class="logo">
-    <div class="logo-icon">⚡</div>
+    <div class="logo-icon">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M3.5 16.5 A9 9 0 0 1 16.5 3.5" stroke="#22c55e" stroke-width="1.4" stroke-linecap="round" fill="none" opacity="0.4"/>
+        <path d="M5.8 14.2 A6 6 0 0 1 14.2 5.8" stroke="#22c55e" stroke-width="1.4" stroke-linecap="round" fill="none" opacity="0.65"/>
+        <path d="M8 12 A3 3 0 0 1 12 8" stroke="#22c55e" stroke-width="1.4" stroke-linecap="round" fill="none" opacity="0.9"/>
+        <line x1="10" y1="10" x2="3.5" y2="3.5" stroke="#22c55e" stroke-width="1.4" stroke-linecap="round"/>
+        <circle cx="10" cy="10" r="1.5" fill="#22c55e"/>
+      </svg>
+    </div>
     <div>
       <div class="logo-title">Micro:bit Radar</div>
-      <div class="logo-sub">Tactical Scanner v1.0</div>
+      <div class="logo-sub">by @GmedranoTIC</div>
     </div>
   </div>
+
+  <nav class="header-nav">
+    <!-- Telemetría -->
+    <button class="nav-btn open" onclick="togglePanel('panel-tele')" id="nav-tele">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      Telemetría
+    </button>
+    <!-- Calibración -->
+    <button class="nav-btn" onclick="togglePanel('panel-cal')" id="nav-cal">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+      Calibración
+    </button>
+    <!-- Estado -->
+    <button class="nav-btn" onclick="togglePanel('panel-status')" id="nav-status">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+      Estado
+    </button>
+    <!-- Registro -->
+    <button class="nav-btn open" onclick="togglePanel('panel-log')" id="nav-log">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      Registro
+    </button>
+  </nav>
+
   <button id="btn-connect">
     <svg id="bt-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M6.5 6.5 17.5 17.5M6.5 17.5l5-5 5 5V6.5l-5 5-5-5"/>
@@ -191,117 +254,113 @@
   </button>
 </header>
 
-<main>
-  <!-- LEFT -->
-  <div style="display:flex; flex-direction:column; gap:1.25rem;">
-    <div class="panel">
-      <div class="panel-title">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <span>Telemetría</span>
-      </div>
-      <div style="margin-bottom:1rem;">
-        <div class="tele-label">Ángulo Actual</div>
-        <div class="tele-value" id="tele-angle">--°</div>
-      </div>
-      <div>
-        <div class="tele-label">Distancia</div>
-        <div class="tele-value" id="tele-dist">-- cm</div>
-      </div>
-      <hr class="divider">
-      <div class="tele-label" style="margin-bottom:8px;">Rango de Escaneo</div>
-      <input type="range" id="range-dist" min="50" max="400" value="100">
-      <div class="range-labels"><span>50cm</span><span id="range-val">100cm</span></div>
-    </div>
-
-    <!-- CALIBRATION PANEL -->
-    <div class="panel">
-      <div class="panel-title">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
-        <span>Calibración</span>
-      </div>
-
-      <!-- Offset angular -->
-      <div class="tele-label" style="margin-bottom:6px;">Offset angular</div>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-        <input type="range" id="cal-offset" min="-180" max="180" value="0" style="flex:1;accent-color:#22c55e;">
-        <span id="cal-offset-val" style="font-family:monospace;font-size:11px;color:#f4f4f5;min-width:36px;text-align:right;">0°</span>
-      </div>
-      <div style="font-size:9px;color:#52525b;margin-bottom:1rem;">Corrige el desfase entre el 0° del robot y el radar</div>
-
-      <!-- Escala de velocidad -->
-      <div class="tele-label" style="margin-bottom:6px;">Escala velocidad</div>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-        <input type="range" id="cal-scale" min="0.1" max="3.0" step="0.05" value="1.0" style="flex:1;accent-color:#22c55e;">
-        <span id="cal-scale-val" style="font-family:monospace;font-size:11px;color:#f4f4f5;min-width:36px;text-align:right;">1.00x</span>
-      </div>
-      <div style="font-size:9px;color:#52525b;margin-bottom:1rem;">Si el radar gira más rápido/lento que el robot, ajústalo</div>
-
-      <!-- Dirección de giro -->
-      <div class="tele-label" style="margin-bottom:6px;">Dirección de giro</div>
-      <div style="display:flex;gap:6px;margin-bottom:1rem;">
-        <button id="cal-dir-cw"  onclick="setDir(1)"  style="flex:1;padding:6px;border-radius:6px;border:1px solid #22c55e;background:rgba(34,197,94,0.15);color:#22c55e;font-size:10px;font-weight:700;cursor:pointer;">↻ Horario</button>
-        <button id="cal-dir-ccw" onclick="setDir(-1)" style="flex:1;padding:6px;border-radius:6px;border:1px solid #3f3f46;background:transparent;color:#71717a;font-size:10px;font-weight:700;cursor:pointer;">↺ Antihor.</button>
-      </div>
-
-      <!-- Umbral alerta -->
-      <div class="tele-label" style="margin-bottom:6px;">Umbral alerta (cm)</div>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-        <input type="range" id="cal-alert" min="10" max="200" value="30" style="flex:1;accent-color:#ef4444;">
-        <span id="cal-alert-val" style="font-family:monospace;font-size:11px;color:#f4f4f5;min-width:36px;text-align:right;">30cm</span>
-      </div>
-      <div style="font-size:9px;color:#52525b;margin-bottom:1rem;">Distancia mínima antes de marcar en rojo</div>
-
-      <!-- Reset -->
-      <button onclick="resetCal()" style="width:100%;padding:6px;border-radius:6px;border:1px solid #3f3f46;background:transparent;color:#71717a;font-size:10px;cursor:pointer;">Restablecer calibración</button>
-    </div>
-
-    <div class="panel">
-      <div class="panel-title">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
-        <span>Estado del Sistema</span>
-      </div>
-      <div class="status-row"><span class="status-name">BT Dispositivo</span><span class="badge" id="st-bt">Offline</span></div>
-      <div class="status-row"><span class="status-name">GATT</span><span class="badge" id="st-gatt">Offline</span></div>
-      <div class="status-row"><span class="status-name">UART Servicio</span><span class="badge" id="st-uart">Offline</span></div>
-      <div class="status-row"><span class="status-name">Notificaciones</span><span class="badge" id="st-notify">Offline</span></div>
-      <div class="status-row"><span class="status-name">Ultrasonidos</span><span class="badge" id="st-us">Offline</span></div>
-      <div class="status-row"><span class="status-name">Cutebot Pro</span><span class="badge" id="st-cb">Offline</span></div>
-      <hr style="border:none;border-top:1px solid #27272a;margin:8px 0;">
-      <div class="status-row">
-        <span class="status-name">Freq. datos</span>
-        <span class="badge" id="st-rate" style="font-family:monospace;">-- Hz</span>
-      </div>
-      <div class="status-row">
-        <span class="status-name">Paquetes OK</span>
-        <span class="badge" id="st-pkts" style="font-family:monospace;">0</span>
-      </div>
-      <div class="status-row">
-        <span class="status-name">Errores parse</span>
-        <span class="badge" id="st-errs" style="font-family:monospace;background:transparent;color:#71717a;">0</span>
+<!-- DROPDOWN PANELS (below header, overlay) -->
+<div id="panels-bar">
+  <!-- Telemetría -->
+  <div class="drop-panel open" id="panel-tele">
+    <div class="drop-inner">
+      <div class="drop-cols">
+        <div>
+          <div class="tele-label">Ángulo Actual</div>
+          <div class="tele-value" id="tele-angle">--°</div>
+        </div>
+        <div>
+          <div class="tele-label">Distancia</div>
+          <div class="tele-value" id="tele-dist">-- cm</div>
+        </div>
+        <div style="min-width:180px;">
+          <div class="tele-label" style="margin-bottom:8px;">Rango de Escaneo</div>
+          <input type="range" id="range-dist" min="50" max="400" value="100">
+          <div class="range-labels"><span>50cm</span><span id="range-val">100cm</span></div>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- CENTER -->
+  <!-- Calibración -->
+  <div class="drop-panel" id="panel-cal">
+    <div class="drop-inner">
+      <div class="drop-cols">
+        <div style="min-width:160px;">
+          <div class="tele-label" style="margin-bottom:6px;">Offset angular</div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="range" id="cal-offset" min="-180" max="180" value="0" style="flex:1;accent-color:#22c55e;">
+            <span id="cal-offset-val" style="font-family:monospace;font-size:11px;color:#f4f4f5;min-width:36px;">0°</span>
+          </div>
+          <div style="font-size:9px;color:#52525b;margin-top:3px;">Desfase 0° robot vs radar</div>
+        </div>
+        <div style="min-width:160px;">
+          <div class="tele-label" style="margin-bottom:6px;">Escala velocidad</div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="range" id="cal-scale" min="0.1" max="3.0" step="0.05" value="1.0" style="flex:1;accent-color:#22c55e;">
+            <span id="cal-scale-val" style="font-family:monospace;font-size:11px;color:#f4f4f5;min-width:40px;">1.00x</span>
+          </div>
+          <div style="font-size:9px;color:#52525b;margin-top:3px;">Sincroniza giro robot/radar</div>
+        </div>
+        <div>
+          <div class="tele-label" style="margin-bottom:6px;">Dirección de giro</div>
+          <div style="display:flex;gap:6px;">
+            <button id="cal-dir-cw"  onclick="setDir(1)"  style="flex:1;padding:5px 10px;border-radius:6px;border:1px solid #22c55e;background:rgba(34,197,94,0.15);color:#22c55e;font-size:10px;font-weight:700;cursor:pointer;">↻ Horario</button>
+            <button id="cal-dir-ccw" onclick="setDir(-1)" style="flex:1;padding:5px 10px;border-radius:6px;border:1px solid #3f3f46;background:transparent;color:#71717a;font-size:10px;font-weight:700;cursor:pointer;">↺ Antihor.</button>
+          </div>
+        </div>
+        <div style="min-width:160px;">
+          <div class="tele-label" style="margin-bottom:6px;">Umbral alerta (cm)</div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="range" id="cal-alert" min="10" max="200" value="30" style="flex:1;accent-color:#ef4444;">
+            <span id="cal-alert-val" style="font-family:monospace;font-size:11px;color:#f4f4f5;min-width:36px;">30cm</span>
+          </div>
+          <div style="font-size:9px;color:#52525b;margin-top:3px;">Dist. mínima para rojo</div>
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button onclick="resetCal()" style="padding:5px 12px;border-radius:6px;border:1px solid #3f3f46;background:transparent;color:#71717a;font-size:10px;cursor:pointer;white-space:nowrap;">↺ Reset</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Estado del Sistema -->
+  <div class="drop-panel" id="panel-status">
+    <div class="drop-inner">
+      <div class="drop-cols">
+        <div>
+          <div class="status-row"><span class="status-name">BT Dispositivo</span><span class="badge" id="st-bt">Offline</span></div>
+          <div class="status-row"><span class="status-name">GATT</span><span class="badge" id="st-gatt">Offline</span></div>
+          <div class="status-row"><span class="status-name">UART Servicio</span><span class="badge" id="st-uart">Offline</span></div>
+        </div>
+        <div>
+          <div class="status-row"><span class="status-name">Notificaciones</span><span class="badge" id="st-notify">Offline</span></div>
+          <div class="status-row"><span class="status-name">Ultrasonidos</span><span class="badge" id="st-us">Offline</span></div>
+          <div class="status-row"><span class="status-name">Cutebot Pro</span><span class="badge" id="st-cb">Offline</span></div>
+        </div>
+        <div>
+          <div class="status-row"><span class="status-name">Freq. datos</span><span class="badge" id="st-rate" style="font-family:monospace;">-- Hz</span></div>
+          <div class="status-row"><span class="status-name">Paquetes OK</span><span class="badge" id="st-pkts" style="font-family:monospace;">0</span></div>
+          <div class="status-row"><span class="status-name">Errores parse</span><span class="badge" id="st-errs" style="font-family:monospace;background:transparent;color:#71717a;">0</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Registro de Actividad -->
+  <div class="drop-panel open" id="panel-log">
+    <div class="drop-inner">
+      <div class="log-list" id="log-list" style="max-height:160px;">
+        <div class="log-empty">Esperando flujo de datos...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<main>
   <div class="radar-center">
     <div class="radar-wrap">
       <canvas id="radar-canvas" width="600" height="600"></canvas>
-      <div class="radar-label">Radar System Active</div>
+      <div class="radar-label">Radar System Active<br>by @GmedranoTIC</div>
     </div>
     <div class="legend">
       <div class="legend-item"><div class="dot red"></div><span>Objeto Detectado</span></div>
       <div class="legend-item"><div class="dot green"></div><span>Vía Libre</span></div>
-    </div>
-  </div>
-
-  <!-- RIGHT -->
-  <div class="panel" style="display:flex; flex-direction:column;">
-    <div class="panel-title">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-      <span>Registro de Actividad</span>
-    </div>
-    <div class="log-list" id="log-list">
-      <div class="log-empty">Esperando flujo de datos...</div>
     </div>
   </div>
 </main>
@@ -787,6 +846,17 @@
   }
 
   requestAnimationFrame(render);
+
+  // ── Collapsible panels ────────────────────────────────────────────────────
+  function togglePanel(id) {
+    const panel = document.getElementById(id);
+    const isOpen = panel.classList.contains('open');
+    panel.classList.toggle('open', !isOpen);
+    // sync nav button
+    const navId = 'nav-' + id.replace('panel-', '');
+    const navBtn = document.getElementById(navId);
+    if (navBtn) navBtn.classList.toggle('open', !isOpen);
+  }
 </script>
 
 <div id="diag-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.82); z-index:300; align-items:center; justify-content:center;">
