@@ -65,18 +65,11 @@
       border-bottom: 1px solid transparent;
       transition: border-color 0.2s;
     }
-    #panels-bar:has(.drop-panel.open) {
+    #panels-bar.open {
       border-bottom-color: var(--border);
     }
     .drop-panel {
-      overflow: hidden;
-      max-height: 0;
-      transition: max-height 0.3s ease, opacity 0.25s ease;
-      opacity: 0;
-    }
-    .drop-panel.open {
-      max-height: 300px;
-      opacity: 1;
+      display: block;
     }
     .drop-inner {
       padding: 1rem 1.5rem;
@@ -224,25 +217,10 @@
   </div>
 
   <nav class="header-nav">
-    <!-- Telemetría -->
-    <button class="nav-btn open" onclick="togglePanel('panel-tele')" id="nav-tele">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-      Telemetría
-    </button>
-    <!-- Calibración -->
-    <button class="nav-btn" onclick="togglePanel('panel-cal')" id="nav-cal">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
-      Calibración
-    </button>
-    <!-- Estado -->
-    <button class="nav-btn" onclick="togglePanel('panel-status')" id="nav-status">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
-      Estado
-    </button>
-    <!-- Registro -->
-    <button class="nav-btn open" onclick="togglePanel('panel-log')" id="nav-log">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-      Registro
+    <button class="nav-btn" onclick="toggleOpciones()" id="nav-opciones">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="19" r="1.5" fill="currentColor"/></svg>
+      Opciones
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px;opacity:0.5;" id="nav-opciones-chevron"><polyline points="6 9 12 15 18 9"/></svg>
     </button>
   </nav>
 
@@ -256,8 +234,9 @@
 
 <!-- DROPDOWN PANELS (below header, overlay) -->
 <div id="panels-bar">
+<div id="opciones-wrap" style="overflow:hidden;max-height:0;opacity:0;transition:max-height 0.35s ease,opacity 0.25s ease;">
   <!-- Telemetría -->
-  <div class="drop-panel open" id="panel-tele">
+  <div class="drop-panel" id="panel-tele">
     <div class="drop-inner">
       <div class="drop-cols">
         <div>
@@ -292,7 +271,7 @@
         <div style="min-width:160px;">
           <div class="tele-label" style="margin-bottom:6px;">Escala velocidad</div>
           <div style="display:flex;align-items:center;gap:8px;">
-            <input type="range" id="cal-scale" min="0.1" max="3.0" step="0.05" value="1.0" style="flex:1;accent-color:#22c55e;">
+            <input type="range" id="cal-scale" min="0.1" max="10.0" step="0.1" value="1.0" style="flex:1;accent-color:#22c55e;">
             <span id="cal-scale-val" style="font-family:monospace;font-size:11px;color:#f4f4f5;min-width:40px;">1.00x</span>
           </div>
           <div style="font-size:9px;color:#52525b;margin-top:3px;">Sincroniza giro robot/radar</div>
@@ -343,14 +322,15 @@
   </div>
 
   <!-- Registro de Actividad -->
-  <div class="drop-panel open" id="panel-log">
+  <div class="drop-panel" id="panel-log">
     <div class="drop-inner">
       <div class="log-list" id="log-list" style="max-height:160px;">
         <div class="log-empty">Esperando flujo de datos...</div>
       </div>
     </div>
   </div>
-</div>
+</div><!-- /opciones-wrap -->
+</div><!-- /panels-bar -->
 
 <main>
   <div class="radar-center">
@@ -848,14 +828,37 @@
   requestAnimationFrame(render);
 
   // ── Collapsible panels ────────────────────────────────────────────────────
+  let opcionesOpen = false;
+
+  function toggleOpciones() {
+    opcionesOpen = !opcionesOpen;
+    const wrap = document.getElementById('opciones-wrap');
+    const bar  = document.getElementById('panels-bar');
+    const btn  = document.getElementById('nav-opciones');
+    const chev = document.getElementById('nav-opciones-chevron');
+    // Force reflow to get correct scrollHeight before animating
+    if (opcionesOpen) {
+      wrap.style.maxHeight = 'none';
+      const h = wrap.scrollHeight + 'px';
+      wrap.style.maxHeight = '0';
+      requestAnimationFrame(() => {
+        wrap.style.maxHeight = h;
+        wrap.style.opacity = '1';
+      });
+    } else {
+      wrap.style.maxHeight = '0';
+      wrap.style.opacity = '0';
+    }
+    bar.classList.toggle('open', opcionesOpen);
+    btn.classList.toggle('open', opcionesOpen);
+    chev.style.transform = opcionesOpen ? 'rotate(180deg)' : '';
+    chev.style.transition = 'transform 0.25s ease';
+  }
+
   function togglePanel(id) {
     const panel = document.getElementById(id);
     const isOpen = panel.classList.contains('open');
     panel.classList.toggle('open', !isOpen);
-    // sync nav button
-    const navId = 'nav-' + id.replace('panel-', '');
-    const navBtn = document.getElementById(navId);
-    if (navBtn) navBtn.classList.toggle('open', !isOpen);
   }
 </script>
 
