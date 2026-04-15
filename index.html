@@ -249,8 +249,8 @@
         </div>
         <div style="min-width:180px;">
           <div class="tele-label" style="margin-bottom:8px;">Rango de Escaneo</div>
-          <input type="range" id="range-dist" min="50" max="400" value="100">
-          <div class="range-labels"><span>50cm</span><span id="range-val">100cm</span></div>
+          <input type="range" id="range-dist" min="1" max="100" value="50">
+          <div class="range-labels"><span>1cm</span><span id="range-val">50cm</span></div>
         </div>
       </div>
     </div>
@@ -287,8 +287,8 @@
         <div style="min-width:160px;">
           <div class="tele-label" style="margin-bottom:6px;">Umbral alerta (cm)</div>
           <div style="display:flex;align-items:center;gap:8px;">
-            <input type="range" id="cal-alert" min="10" max="200" value="30" style="flex:1;accent-color:#ef4444;">
-            <span id="cal-alert-val" style="font-family:monospace;font-size:11px;color:#f4f4f5;min-width:36px;">30cm</span>
+            <input type="range" id="cal-alert" min="2" max="80" value="15" style="flex:1;accent-color:#ef4444;">
+            <span id="cal-alert-val" style="font-family:monospace;font-size:11px;color:#f4f4f5;min-width:36px;">15cm</span>
           </div>
           <div style="font-size:9px;color:#52525b;margin-top:3px;">Dist. mínima para rojo</div>
         </div>
@@ -365,11 +365,11 @@
   // Point fades as sweep moves away, resets bright when sweep passes again
   const radarMap = new Array(360).fill(null);
   let lastSweepAngle = -1;
-  let maxDistance = 100;
+  let maxDistance = 50;
   let calOffset = 0;     // degrees to add to incoming angle
   let calScale  = 1.0;   // speed multiplier for angle
   let calDir    = 1;     // 1=CW, -1=CCW
-  let alertDist = 30;    // cm threshold for red points
+  let alertDist = 15;    // cm threshold for red points
 
   // Connection stage tracking: 0=off 1=bt 2=gatt 3=uart 4=notify
   let connStage = 0;
@@ -430,10 +430,10 @@
   function resetCal() {
     calOffset = 0; calScale = 1.0; calDir = 1; alertDist = 30;
     document.getElementById('cal-offset').value = 0;
-    document.getElementById('cal-alert').value  = 30;
+    document.getElementById('cal-alert').value  = 15;
     document.getElementById('cal-offset-val').textContent = '0°';
     document.getElementById('cal-scale-val').textContent  = '1.00x';
-    document.getElementById('cal-alert-val').textContent  = '30cm';
+    document.getElementById('cal-alert-val').textContent  = '15cm';
     setDir(1);
   }
 
