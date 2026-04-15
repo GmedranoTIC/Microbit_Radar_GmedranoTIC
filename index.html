@@ -369,7 +369,7 @@
   let calOffset = 0;     // degrees to add to incoming angle
   let calScale  = 1.0;   // speed multiplier for angle
   let calDir    = 1;     // 1=CW, -1=CCW
-  let alertDist = 15;    // cm threshold for red points
+  let alertDist = 10;    // cm threshold for red points
 
   // Connection stage tracking: 0=off 1=bt 2=gatt 3=uart 4=notify
   let connStage = 0;
@@ -813,7 +813,7 @@
       if (!pt) continue;
 
       // sweepAge 0-359: full bright at 0, fades linearly, near-invisible at ~340°
-      const opacity = Math.max(0, 1 - pt.sweepAge / 340);
+      const opacity = Math.max(0, 1 - pt.sweepAge / 200);
       if (opacity <= 0) continue;
 
       const angleRad = ((pt.angle - 90) * Math.PI) / 180;
