@@ -808,12 +808,12 @@
     }
 
     // Draw all slots — opacity based on sweepAge (0°=bright, 359°=almost gone)
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 360; i++) {
       const pt = radarMap[i];
       if (!pt) continue;
 
       // sweepAge 0-359: full bright at 0, fades linearly, near-invisible at ~340°
-      const opacity = Math.max(0, 1 - pt.sweepAge / 200);
+      const opacity = Math.max(0, 1 - pt.sweepAge / 34);
       if (opacity <= 0) continue;
 
       const angleRad = ((pt.angle - 90) * Math.PI) / 180;
