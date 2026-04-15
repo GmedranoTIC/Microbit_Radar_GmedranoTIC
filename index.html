@@ -268,13 +268,14 @@
           </div>
           <div style="font-size:9px;color:#52525b;margin-top:3px;">Desfase 0° robot vs radar</div>
         </div>
-        <div style="min-width:160px;">
+        <div>
           <div class="tele-label" style="margin-bottom:6px;">Escala velocidad</div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <input type="range" id="cal-scale" min="0.1" max="10.0" step="0.1" value="1.0" style="flex:1;accent-color:#22c55e;">
-            <span id="cal-scale-val" style="font-family:monospace;font-size:11px;color:#f4f4f5;min-width:40px;">1.00x</span>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <button onclick="changeScale(-0.5)" style="width:30px;height:30px;border-radius:6px;border:1px solid #3f3f46;background:#18181b;color:#f4f4f5;font-size:16px;font-weight:700;cursor:pointer;line-height:1;">−</button>
+            <span id="cal-scale-val" style="font-family:monospace;font-size:14px;font-weight:700;color:#f4f4f5;min-width:52px;text-align:center;">1.00x</span>
+            <button onclick="changeScale(0.5)"  style="width:30px;height:30px;border-radius:6px;border:1px solid #3f3f46;background:#18181b;color:#f4f4f5;font-size:16px;font-weight:700;cursor:pointer;line-height:1;">+</button>
           </div>
-          <div style="font-size:9px;color:#52525b;margin-top:3px;">Sincroniza giro robot/radar</div>
+          <div style="font-size:9px;color:#52525b;margin-top:4px;">Sincroniza giro robot/radar</div>
         </div>
         <div>
           <div class="tele-label" style="margin-bottom:6px;">Dirección de giro</div>
@@ -353,15 +354,17 @@
   const UART_SERVICE   = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
   const UART_TX_CHAR   = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // write to micro:bit
   const UART_RX_CHAR   = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // notify FROM micro:bit
-  const MAX_POINTS     = 200;
-  const FADE_MS        = 5000;
   const ALERT_DIST_CM  = 30;
 
   // ─── STATE ─────────────────────────────────────────────────────────────────
   let device = null, characteristic = null;
   let connected = false;
   let lastData = null;
-  let points = [];     // { angle, distance, timestamp }
+  // One slot per degree: map of angle -> { angle, distance, sweepAge }
+  // sweepAge = how many degrees the sweep has travelled since this point was written
+  // Point fades as sweep moves away, resets bright when sweep passes again
+  const radarMap = new Array(360).fill(null);
+  let lastSweepAngle = -1;
   let maxDistance = 100;
   let calOffset = 0;     // degrees to add to incoming angle
   let calScale  = 1.0;   // speed multiplier for angle
@@ -407,10 +410,10 @@
     calOffset = parseInt(this.value);
     document.getElementById('cal-offset-val').textContent = calOffset + '°';
   });
-  document.getElementById('cal-scale').addEventListener('input', function() {
-    calScale = parseFloat(this.value);
+  function changeScale(delta) {
+    calScale = Math.max(0.1, Math.min(10.0, Math.round((calScale + delta) * 10) / 10));
     document.getElementById('cal-scale-val').textContent = calScale.toFixed(2) + 'x';
-  });
+  }
   document.getElementById('cal-alert').addEventListener('input', function() {
     alertDist = parseInt(this.value);
     document.getElementById('cal-alert-val').textContent = alertDist + 'cm';
@@ -427,7 +430,6 @@
   function resetCal() {
     calOffset = 0; calScale = 1.0; calDir = 1; alertDist = 30;
     document.getElementById('cal-offset').value = 0;
-    document.getElementById('cal-scale').value  = 1.0;
     document.getElementById('cal-alert').value  = 30;
     document.getElementById('cal-offset-val').textContent = '0°';
     document.getElementById('cal-scale-val').textContent  = '1.00x';
@@ -599,9 +601,9 @@
     const rawAngle = angle;
     angle = ((rawAngle * calScale * calDir) + calOffset + 3600) % 360;
     lastData = { angle, distance };
-    const pt = { angle, distance, timestamp: Date.now() };
-    points.push(pt);
-    if (points.length > MAX_POINTS) points = points.slice(-MAX_POINTS);
+    // Store in the angle slot — sweepAge 0 = just scanned (full brightness)
+    const slot = Math.round(angle) % 360;
+    radarMap[slot] = { angle: slot, distance, sweepAge: 0 };
 
     updateTelemetry();
     addLogEntry(pt);
@@ -610,7 +612,7 @@
 
   function setConnected(val) {
     connected = val;
-    if (!val) { connStage = 0; pktCount = 0; errCount = 0; lastPktTimes = []; }
+    if (!val) { connStage = 0; pktCount = 0; errCount = 0; lastPktTimes = []; radarMap.fill(null); lastSweepAngle = -1; }
     btnConnect.classList.toggle('connected', val);
     btnText.textContent = val ? 'Conectado' : 'Conectar Micro:bit';
     btIcon.innerHTML = val
@@ -764,10 +766,9 @@
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
 
-    // Sweep line & fill (based on latest point)
-    if (points.length > 0) {
-      const latest = points[points.length - 1];
-      const sweepRad = ((latest.angle - 90) * Math.PI) / 180;
+    // Sweep line & fill (based on latest received angle)
+    if (lastData) {
+      const sweepRad = ((lastData.angle - 90) * Math.PI) / 180;
 
       // Swept sector glow
       const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
@@ -792,11 +793,29 @@
       ctx.shadowBlur = 0;
     }
 
-    // Points
-    points.forEach(pt => {
-      const age = now - pt.timestamp;
-      if (age > FADE_MS) return;
-      const opacity = 1 - age / FADE_MS;
+    // Advance sweepAge for all slots based on sweep movement
+    if (lastData || lastSweepAngle >= 0) {
+      const currentSweep = lastData ? Math.round(lastData.angle) % 360 : lastSweepAngle;
+
+      if (lastSweepAngle >= 0 && currentSweep !== lastSweepAngle) {
+        // How many degrees did the sweep advance? (handle wrap)
+        let delta = (currentSweep - lastSweepAngle + 360) % 360;
+        for (let i = 0; i < 360; i++) {
+          if (radarMap[i]) radarMap[i].sweepAge = (radarMap[i].sweepAge + delta) % 360;
+        }
+      }
+      lastSweepAngle = currentSweep;
+    }
+
+    // Draw all slots — opacity based on sweepAge (0°=bright, 359°=almost gone)
+    for (let i = 0; i < 360; i++) {
+      const pt = radarMap[i];
+      if (!pt) continue;
+
+      // sweepAge 0-359: full bright at 0, fades linearly, near-invisible at ~340°
+      const opacity = Math.max(0, 1 - pt.sweepAge / 340);
+      if (opacity <= 0) continue;
+
       const angleRad = ((pt.angle - 90) * Math.PI) / 180;
       const distRatio = Math.min(pt.distance / maxDistance, 1);
       const px = cx + Math.cos(angleRad) * R * distRatio;
@@ -804,12 +823,16 @@
       const isAlert = pt.distance < alertDist;
 
       ctx.shadowBlur = isAlert ? 12 : 6;
-      ctx.shadowColor = isAlert ? `rgba(239,68,68,${opacity})` : `rgba(34,197,94,${opacity})`;
-      ctx.fillStyle = isAlert ? `rgba(239,68,68,${opacity})` : `rgba(34,197,94,${opacity})`;
+      ctx.shadowColor = isAlert
+        ? 'rgba(239,68,68,' + opacity + ')'
+        : 'rgba(34,197,94,' + opacity + ')';
+      ctx.fillStyle = isAlert
+        ? 'rgba(239,68,68,' + opacity + ')'
+        : 'rgba(34,197,94,' + opacity + ')';
       ctx.beginPath();
       ctx.arc(px, py, isAlert ? 5 : 4, 0, Math.PI * 2);
       ctx.fill();
-    });
+    }
     ctx.shadowBlur = 0;
 
     requestAnimationFrame(render);
